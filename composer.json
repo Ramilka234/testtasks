@@ -1,0 +1,15 @@
+{
+    "name": "vendor/package",
+    "description": "Описание пакета",
+    "require": {
+        "arhitector/yandex": "dev-master",
+        "psr/http-factory": "^1.1",
+        "php-http/message-factory": "^1.1"
+    },
+    "authors": [
+        {
+            "name": "Ramil",
+            "email": "ramilasus@gmail.com"
+        }
+    ]
+}
