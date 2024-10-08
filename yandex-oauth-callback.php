@@ -1,12 +1,9 @@
 <?php
 session_start();
 
-// Проверяем, есть ли токен в URL
-if (isset($_GET['token'])) {
-    // Сохраняем токен в сессии
-    $_SESSION['yandex_token'] = $_GET['token'];
 
-    // Перенаправляем пользователя обратно на страницу компонента
+if (isset($_GET['token'])) {
+    $_SESSION['yandex_token'] = $_GET['token'];
     header('Location: /novaya-stranitsa.php');
     exit();
 }
@@ -15,18 +12,18 @@ echo "
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Авторизация Яндекс</title>
+    <title>ГЂГўГІГ®Г°ГЁГ§Г Г¶ГЁГї ГџГ­Г¤ГҐГЄГ±</title>
     <script>
-        // Получаем токен из фрагмента URL
+        // ГЏГ®Г«ГіГ·Г ГҐГ¬ ГІГ®ГЄГҐГ­ ГЁГ§ ГґГ°Г ГЈГ¬ГҐГ­ГІГ  URL
         const hash = window.location.hash.substring(1);
         const params = new URLSearchParams(hash);
         const accessToken = params.get('access_token');
 
-        // Если токен существует, перенаправляем на обработчик
+        // Г…Г±Г«ГЁ ГІГ®ГЄГҐГ­ Г±ГіГ№ГҐГ±ГІГўГіГҐГІ, ГЇГҐГ°ГҐГ­Г ГЇГ°Г ГўГ«ГїГҐГ¬ Г­Г  Г®ГЎГ°Г ГЎГ®ГІГ·ГЁГЄ
         if (accessToken) {
             window.location.href = '?token=' + accessToken;
         } else {
-            document.body.innerHTML = '<p>Ошибка авторизации. Токен не получен.</p>';
+            document.body.innerHTML = '<p>ГЋГёГЁГЎГЄГ  Г ГўГІГ®Г°ГЁГ§Г Г¶ГЁГЁ. Г’Г®ГЄГҐГ­ Г­ГҐ ГЇГ®Г«ГіГ·ГҐГ­.</p>';
         }
     </script>
 </head>
