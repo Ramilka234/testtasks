@@ -1,144 +1,110 @@
 <?php
 
-if (!defined("B_PROLOG_INCLUDED") || B_PROLOG_INCLUDED !== true) die();
-
+use PHPUnit\Framework\TestCase;
 use Bitrix\Main\Loader;
 use Bitrix\Highloadblock as HL;
 use Bitrix\Main\Entity;
+use Mockery as m;
 
-class AvailableCarsComponent extends CBitrixComponent
+class AvailableCarsComponentTest extends TestCase
 {
-    protected $userId;
-    protected $startTime;
-    protected $endTime;
-
-    public function onPrepareComponentParams($arParams)
+    protected function tearDown(): void
     {
-        $this->userId = $arParams['USER_ID'] ?: $GLOBALS['USER']->GetID();
-        $this->startTime = $_GET['start_time'];
-        $this->endTime = $_GET['end_time'];
-
-        return parent::onPrepareComponentParams($arParams);
-    }
-    
-    public function executeComponent()
-    {
-        if (empty($this->startTime) || empty($this->endTime)) {
-            ShowError("Пожалуйста, укажите время начала и окончания поездки.");
-            return;
-        }
-
-        if (!Loader::includeModule('highloadblock') || !Loader::includeModule('iblock')) {
-            ShowError("Модули highloadblock или iblock не установлены.");
-            return;
-        }
-
-        $comfortCategory = $this->getUserComfortCategory();
-        $busyCars = $this->getBusyCars();
-        $availableCars = $this->getAvailableCars($comfortCategory, $busyCars);
-        $this->SetDrivers($availableCars)
-
-        $this->arResult['CARS'] = $availableCars;
-        $this->includeComponentTemplate();
+        m::close();
     }
 
-    public function SetDrivers(&$availableCars){
-        foreach ($availableCars as &$car) {
-            $car['DRIVER_INFO'] = $this->getDriverInfo($car['UF_DRIVER']);
-        }        
+    public function testExecuteComponentWithoutTime()
+    {
+        // Создаем mock для компонента
+        $component = m::mock('AvailableCarsComponent[showError, includeComponentTemplate]');
+        $component->shouldReceive('showError')->once()->with('Пожалуйста, укажите время начала и окончания поездки.');
+
+        // Устанавливаем параметры и вызываем метод executeComponent
+        $component->startTime = null;
+        $component->endTime = null;
+        $component->executeComponent();
     }
 
-    protected function getUserComfortCategory()
+    public function testExecuteComponentWithTimeButNoModules()
     {
-        // Получение категории комфорта сотрудника через highload-блок
-        $hlblockId = $this->getHLBlockByCode('comfort_category');
-        $hlblock = HL\HighloadBlockTable::getById($hlblockId)->fetch();
-        $entity = HL\HighloadBlockTable::compileEntity($hlblock);
-        $entityDataClass = $entity->getDataClass();
+        // Мокируем загрузчик модулей, чтобы симулировать неустановленные модули
+        Loader::shouldReceive('includeModule')->with('highloadblock')->andReturn(false);
+        Loader::shouldReceive('includeModule')->with('iblock')->andReturn(true);
 
-        $employeePosition = $entityDataClass::getList([
-            'filter' => ['UF_USER_ID' => $this->userId],
-            'select' => ['UF_COMFORT_CATEGORY']
-        ])->fetch();
+        $component = m::mock('AvailableCarsComponent[showError, includeComponentTemplate]');
+        $component->shouldReceive('showError')->once()->with('Модули highloadblock или iblock не установлены.');
 
-        return $employeePosition['UF_COMFORT_CATEGORY'];
+        $component->startTime = '2023-10-01 10:00:00';
+        $component->endTime = '2023-10-01 18:00:00';
+        $component->executeComponent();
     }
 
-    protected function getBusyCars()
+    public function testGetBusyCars()
     {
-        // Получаем список занятых автомобилей на запрашиваемый интервал времени
-        $trips = \Bitrix\Iblock\ElementTable::getList([
-            'filter' => [
-                '<=PROPERTY_START_TIME' => $this->endTime,
-                '>=PROPERTY_END_TIME' => $this->startTime,
-            ],
-            'select' => ['ID', 'PROPERTY_CAR_ID']
-        ]);
-    
-        return $this->SetBusyCars($trips);
-    }
-    
-    public function SetBusyCars($trips)
-    {
-        $busyCars = [];
-        while ($trip = $trips->fetch()) {
-            $busyCars[] = $trip['PROPERTY_CAR_ID'];
-        }
-        return $busyCars;    
+        // Мокируем запрос к Bitrix для получения списка поездок
+        $tripsMock = m::mock();
+        $tripsMock->shouldReceive('fetch')
+            ->andReturn(['PROPERTY_CAR_ID' => 1])
+            ->once();
+
+        $component = m::mock('AvailableCarsComponent[SetBusyCars]');
+        $component->shouldReceive('SetBusyCars')->andReturn([1]);
+
+        $busyCars = $component->getBusyCars();
+        $this->assertEquals([1], $busyCars);
     }
 
-    protected function getAvailableCars($comfortCategory, $busyCars)
+    public function testSetDrivers()
     {
-        $cars = \Bitrix\Iblock\ElementTable::getList([
-            'filter' => [
-                'PROPERTY_COMFORT_CATEGORY' => $comfortCategory,
-                '!ID' => $busyCars  // Исключаем занятые автомобили
-            ],
-            'select' => ['ID', 'NAME', 'PROPERTY_COMFORT_CATEGORY', 'PROPERTY_DRIVER']
-        ]);
+        $availableCars = [
+            [
+                'UF_DRIVER' => 1,
+                'UF_MODEL_NAME' => 'Car Model 1',
+                'UF_COMFORT_CATEGORY' => '1'
+            ]
+        ];
 
-        return $this->SetAvailableCars($cars);
+        $component = m::mock('AvailableCarsComponent[getDriverInfo]');
+        $component->shouldReceive('getDriverInfo')->with(1)->andReturn('Driver Name');
+        
+        $component->SetDrivers($availableCars);
+
+        $this->assertEquals('Driver Name', $availableCars[0]['DRIVER_INFO']);
     }
 
-    public function SetAvailableCars($cars)
+    public function testGetUserComfortCategory()
     {
-        $availableCars = [];
-        while ($car = $cars->fetch()) {
-            $availableCars[] = [
-                'ID' => $car['ID'],
-                'UF_MODEL_NAME' => $car['NAME'],
-                'UF_COMFORT_CATEGORY' => $car['PROPERTY_COMFORT_CATEGORY'],
-                'UF_DRIVER' => $car['PROPERTY_DRIVER']
-            ];
-        }
+        // Мокируем HL блок для комфорт-категории
+        $hlblockMock = m::mock();
+        $hlblockMock->shouldReceive('getList')
+            ->andReturnSelf()
+            ->once()
+            ->shouldReceive('fetch')
+            ->andReturn(['UF_COMFORT_CATEGORY' => '1'])
+            ->once();
 
-        return $availableCars;   
+        $component = m::mock('AvailableCarsComponent[getHLBlockByCode]');
+        $component->shouldReceive('getHLBlockByCode')->with('comfort_category')->andReturn($hlblockMock);
+
+        $comfortCategory = $component->getUserComfortCategory();
+        $this->assertEquals('1', $comfortCategory);
     }
 
-    protected function getDriverInfo($driverId)
+    public function testGetDriverInfo()
     {
-        // Получение информации о водителе из highload-блока drivers
-        $hlblockId = $this->getHLBlockByCode('drivers');
-        $hlblock = HL\HighloadBlockTable::getById($hlblockId)->fetch();
-        $entity = HL\HighloadBlockTable::compileEntity($hlblock);
-        $entityDataClass = $entity->getDataClass();
+        // Мокируем HL блок для получения информации о водителе
+        $hlblockMock = m::mock();
+        $hlblockMock->shouldReceive('getList')
+            ->andReturnSelf()
+            ->once()
+            ->shouldReceive('fetch')
+            ->andReturn(['UF_FULLNAME' => 'John Doe'])
+            ->once();
 
-        $driver = $entityDataClass::getList([
-            'filter' => ['ID' => $driverId],
-            'select' => ['UF_FULLNAME']
-        ])->fetch();
+        $component = m::mock('AvailableCarsComponent[getHLBlockByCode]');
+        $component->shouldReceive('getHLBlockByCode')->with('drivers')->andReturn($hlblockMock);
 
-        return $driver ? $driver['UF_FULLNAME'] : null;
-    }
-
-    protected function getHLBlockByCode($hlblockCode)
-    {
-        // Получаем ID хайлоад-блока по его символьному коду 
-        $hlblock = HL\HighloadBlockTable::getList([
-            'filter' => ['=NAME' => $hlblockCode], 
-            'select' => ['ID']
-        ])->fetch();
-
-        return $hlblock ? $hlblock['ID'] : null;
+        $driverInfo = $component->getDriverInfo(1);
+        $this->assertEquals('John Doe', $driverInfo);
     }
 }
